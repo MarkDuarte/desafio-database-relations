@@ -1,9 +1,8 @@
-import { getRepository, Repository, In } from 'typeorm';
+import { getRepository, Repository } from 'typeorm';
 
 import IProductsRepository from '@modules/products/repositories/IProductsRepository';
 import ICreateProductDTO from '@modules/products/dtos/ICreateProductDTO';
 import IUpdateProductsQuantityDTO from '@modules/products/dtos/IUpdateProductsQuantityDTO';
-import AppError from '@shared/errors/AppError';
 import Product from '../entities/Product';
 
 interface IFindProducts {
@@ -22,7 +21,11 @@ class ProductsRepository implements IProductsRepository {
     price,
     quantity,
   }: ICreateProductDTO): Promise<Product> {
-    const product = await this.ormRepository.create({ name, price, quantity });
+    const product = this.ormRepository.create({
+      name,
+      price,
+      quantity,
+    });
 
     await this.ormRepository.save(product);
 
@@ -36,35 +39,17 @@ class ProductsRepository implements IProductsRepository {
   }
 
   public async findAllById(products: IFindProducts[]): Promise<Product[]> {
-    const product = await this.ormRepository.findByIds(products);
+    const findProducts = await this.ormRepository.findByIds(products);
 
-    return product;
+    return findProducts;
   }
 
   public async updateQuantity(
     products: IUpdateProductsQuantityDTO[],
   ): Promise<Product[]> {
-    const productsIds = products.map(product => ({ id: product.id }));
-    const findProducts = await this.ormRepository.findByIds(productsIds);
+    const updatedProducts = await this.ormRepository.save(products);
 
-    const updatedProducts = findProducts.map(product => {
-      const findProductQuantity = products.find(
-        findProduct => findProduct.id === product.id,
-      );
-
-      if (!findProductQuantity) {
-        throw new AppError('Product not found');
-      }
-
-      return {
-        ...product,
-        quantity: product.quantity - findProductQuantity?.quantity || 0,
-      };
-    });
-
-    const productSave = await this.ormRepository.save(updatedProducts);
-
-    return productSave;
+    return updatedProducts;
   }
 }
 
