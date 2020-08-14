@@ -4,7 +4,6 @@ import AppError from '@shared/errors/AppError';
 
 import IProductsRepository from '@modules/products/repositories/IProductsRepository';
 import ICustomersRepository from '@modules/customers/repositories/ICustomersRepository';
-import IUpdateProductsQuantityDTO from '@modules/products/dtos/IUpdateProductsQuantityDTO';
 import Order from '../infra/typeorm/entities/Order';
 import IOrdersRepository from '../repositories/IOrdersRepository';
 
@@ -19,7 +18,7 @@ interface IRequest {
 }
 
 @injectable()
-class CreateOrderService {
+class CreateProductService {
   constructor(
     @inject('OrdersRepository')
     private ordersRepository: IOrdersRepository,
@@ -35,55 +34,45 @@ class CreateOrderService {
     const customer = await this.customersRepository.findById(customer_id);
 
     if (!customer) {
-      throw new AppError('Customer does not exist');
+      throw new AppError('Customer not found');
     }
 
-    const productsIds = products.map(product => ({ id: product.id }));
-
-    const findProductsById = await this.productsRepository.findAllById(
-      productsIds,
+    const productsWithPrice = await this.productsRepository.findAllById(
+      products,
     );
 
-    if (findProductsById.length < products.length) {
-      throw new AppError('One or more products are missing');
+    if (productsWithPrice.length <= 0) {
+      throw new AppError('Product not found');
     }
 
-    const updatedQuantities: IUpdateProductsQuantityDTO[] = [];
-
-    const parsedProduts = findProductsById.map(product => {
-      const findUpdatedProduct = products.find(
-        updatedProduct => updatedProduct.id === product.id,
+    const productsTransform = products.map(product => {
+      const productWithPrice = productsWithPrice.find(
+        findProduct => findProduct.id === product.id,
       );
-
-      if (!findUpdatedProduct) {
-        throw new AppError('One or more products are missing');
+      if (!productWithPrice) {
+        throw new AppError('Product not found');
       }
 
-      if (product.quantity < findUpdatedProduct.quantity) {
-        throw new AppError('Insufficient quantity');
+      if (productWithPrice.quantity < product.quantity) {
+        throw new AppError('Product out of stock');
       }
-
-      updatedQuantities.push({
-        id: findUpdatedProduct.id,
-        quantity: product.quantity - findUpdatedProduct.quantity,
-      });
 
       return {
         product_id: product.id,
-        price: product.price,
-        quantity: findUpdatedProduct?.quantity || 0,
+        price: productWithPrice.price,
+        quantity: product.quantity,
       };
     });
 
-    await this.productsRepository.updateQuantity(updatedQuantities);
-
     const order = await this.ordersRepository.create({
       customer,
-      products: parsedProduts,
+      products: productsTransform,
     });
+
+    await this.productsRepository.updateQuantity(products);
 
     return order;
   }
 }
 
-export default CreateOrderService;
+export default CreateProductService;
